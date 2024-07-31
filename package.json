@@ -26,7 +26,9 @@
     "@temporalio/client": "^1.10.3",
     "@temporalio/worker": "^1.10.3",
     "@temporalio/workflow": "^1.10.3",
-    "nanoid": "3.x"
+    "dotenv": "^16.4.5",
+    "nanoid": "3.x",
+    "strava-v3": "^2.2.0"
   },
   "devDependencies": {
     "@temporalio/testing": "^1.10.3",

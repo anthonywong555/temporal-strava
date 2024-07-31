@@ -1,8 +1,14 @@
 import { Connection, Client } from '@temporalio/client';
-import { example } from './workflows';
+import { example, refreshAthleteAccessToken } from './workflows';
+import type { RefreshAthleteAccessTokenRequest } from './workflows';
 import { nanoid } from 'nanoid';
 
 async function run() {
+  // Create Request
+  const aRequest:RefreshAthleteAccessTokenRequest = {
+    scope: 'activity:write,profile:write,read_all,profile:read_all,activity:read_all'
+  }
+
   // Connect to the default Server location
   const connection = await Connection.connect({ address: 'localhost:7233' });
   // In production, pass options to configure TLS and other settings:
@@ -16,10 +22,10 @@ async function run() {
     // namespace: 'foo.bar', // connects to 'default' namespace if not specified
   });
 
-  const handle = await client.workflow.start(example, {
+  const handle = await client.workflow.start(refreshAthleteAccessToken, {
     taskQueue: 'hello-world',
     // type inference works! args: [name: string]
-    args: ['Temporal'],
+    args: [aRequest],
     // in practice, use a meaningful business ID, like customerId or transactionId
     workflowId: 'workflow-' + nanoid(),
   });

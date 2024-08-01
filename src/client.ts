@@ -1,12 +1,13 @@
 import { Connection, Client } from '@temporalio/client';
-import { example, refreshAthleteAccessToken } from './workflows';
+import { refreshAthleteAccessToken } from './workflows';
 import type { RefreshAthleteAccessTokenRequest } from './workflows';
 import { nanoid } from 'nanoid';
 
 async function run() {
   // Create Request
   const aRequest:RefreshAthleteAccessTokenRequest = {
-    scope: 'activity:write,profile:write,read_all,profile:read_all,activity:read_all'
+    isCAN: false,
+    access_token: ''
   }
 
   // Connect to the default Server location
@@ -22,17 +23,15 @@ async function run() {
     // namespace: 'foo.bar', // connects to 'default' namespace if not specified
   });
 
-  const handle = await client.workflow.start(refreshAthleteAccessToken, {
+  const handle = await client.workflow.execute(refreshAthleteAccessToken, {
     taskQueue: 'hello-world',
     // type inference works! args: [name: string]
     args: [aRequest],
     // in practice, use a meaningful business ID, like customerId or transactionId
     workflowId: 'workflow-' + nanoid(),
   });
-  console.log(`Started workflow ${handle.workflowId}`);
 
-  // optional: wait for client result
-  console.log(await handle.result()); // Hello, Temporal!
+  console.log(`Running Strava Workflow`);
 }
 
 run().catch((err) => {

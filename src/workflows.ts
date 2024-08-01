@@ -1,29 +1,48 @@
-import { proxyActivities } from '@temporalio/workflow';
-// Only import the activity types
+import { proxyActivities, defineQuery, setHandler, sleep, workflowInfo, continueAsNew } from '@temporalio/workflow';
 import type * as activities from './activities';
 
 export interface RefreshAthleteAccessTokenRequest {
-  scope: string;
   isCAN?: boolean;
   expires_in?: number;
   refresh_token?: string;
+  access_token: string;
 }
 
-const { greet, getRequestAccessURL, getAccessToken, refreshAccessToken } = proxyActivities<typeof activities>({
+export const fetchAthleteAccessToken = defineQuery<string>('athleteAccessToken');
+
+const { getAccessToken, refreshAccessToken } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
 });
 
-/** A workflow that simply calls an activity */
-export async function example(name: string): Promise<string> {
-  return await greet(name);
-}
+export async function refreshAthleteAccessToken(aRequest: RefreshAthleteAccessTokenRequest){ 
+  let {isCAN = false, expires_in = 0, refresh_token = '', access_token} = aRequest;
 
-export async function refreshAthleteAccessToken(aRequest: RefreshAthleteAccessTokenRequest):Promise<string> {
-  const {scope, isCAN = false, expires_in = 0, refresh_token = ''} = aRequest;
-  //const stravaAccessURL = await getRequestAccessURL(scope);
-  //console.log(stravaAccessURL);
-  //return stravaAccessURL;
-  //const accessToken = await getAccessToken();
-  const result = await refreshAccessToken('');
-  return JSON.stringify(result);
+  if(!isCAN) {
+    const response = await getAccessToken();
+
+    if(!response) {
+      throw new Error('Error on fetching access token', response);
+    }
+    
+    expires_in = response.expires_in;
+    refresh_token = response.refresh_token;
+    access_token = response.access_token;
+
+  }
+
+  setHandler(fetchAthleteAccessToken, () => access_token);
+
+  while(!workflowInfo().continueAsNewSuggested) {
+    // Sleep for a bit
+    await sleep((expires_in - 100) * 1000);
+
+    // Refresh Token
+    const response = await refreshAccessToken(refresh_token);
+
+    expires_in = response.expires_in;
+    refresh_token = response.refresh_token;
+    access_token = response.access_token;
+  }
+
+  await continueAsNew({isCAN: true, expires_in, refresh_token, access_token});
 }

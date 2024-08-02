@@ -1,48 +1,61 @@
-import { proxyActivities, defineQuery, setHandler, sleep, workflowInfo, continueAsNew } from '@temporalio/workflow';
+import { proxyActivities, defineQuery, defineSignal,setHandler, sleep, workflowInfo, continueAsNew, condition } from '@temporalio/workflow';
+import ms from 'ms';
 import type * as activities from './activities';
+import { RefreshAthleteAccessTokenRequest, UpdateAthleteCodeRequest } from './types';
 
-export interface RefreshAthleteAccessTokenRequest {
-  isCAN?: boolean;
-  expires_in?: number;
-  refresh_token?: string;
-  access_token: string;
-}
+export const STRAVA_ATHLETE_ACCESS_TOKEN_QUERY = 'getAthleteAccessToken';
+export const STRAVA_ATHLETE_CODE_SIGNAL = 'updateAthleteCode';
+export const getAthleteAccessToken = defineQuery<string | undefined>(STRAVA_ATHLETE_ACCESS_TOKEN_QUERY);
+export const updateAthleteCode = defineSignal<[UpdateAthleteCodeRequest]>(STRAVA_ATHLETE_CODE_SIGNAL);
 
-export const fetchAthleteAccessToken = defineQuery<string>('athleteAccessToken');
+// Used to determine when to refresh the token.
+export const FIVE_MINS_IN_SECONDS = 300;
 
 const { getAccessToken, refreshAccessToken } = proxyActivities<typeof activities>({
   startToCloseTimeout: '1 minute',
 });
 
-export async function refreshAthleteAccessToken(aRequest: RefreshAthleteAccessTokenRequest){ 
-  let {isCAN = false, expires_in = 0, refresh_token = '', access_token} = aRequest;
+export async function refreshAthleteAccessToken(aRefreshAthleteAccessTokenRequest: RefreshAthleteAccessTokenRequest) {
+  const {client_id, client_secret, redirect_uri} = aRefreshAthleteAccessTokenRequest;
+  let {expires_in = 0, refresh_token = '', access_token, lastRefresh = 0, code = ''} = aRefreshAthleteAccessTokenRequest;
+  let hasCodeChange = false;
 
-  if(!isCAN) {
-    const response = await getAccessToken();
+  let tokenExpiryPeriod = ms(`${expires_in}s`);
+  let tokenRefreshInterval = expires_in ? ms(`${expires_in - FIVE_MINS_IN_SECONDS}s`) : ms(`0s`); // 5mins
 
-    if(!response) {
-      throw new Error('Error on fetching access token', response);
-    }
-    
-    expires_in = response.expires_in;
-    refresh_token = response.refresh_token;
-    access_token = response.access_token;
+  // Query Handler
+  setHandler(getAthleteAccessToken, () => 
+    Date.now() - lastRefresh < tokenExpiryPeriod ? access_token : undefined
+  );
 
+  // Signal Handler
+  setHandler(updateAthleteCode, async (aUpdateAthleteCodeRequest: UpdateAthleteCodeRequest) => {
+    hasCodeChange = true;
+    code = aUpdateAthleteCodeRequest.code;
+  });
+
+  // Waiting for the users to signal in the athlete's code.
+  if(!code) {
+    await condition(() => hasCodeChange);
+    hasCodeChange = false;
+  }
+  
+  const response = refresh_token ? 
+    await refreshAccessToken({client_id, client_secret, redirect_uri, refresh_token}) : 
+    await getAccessToken({client_id, client_secret, redirect_uri, athleteCode: code});
+
+  lastRefresh = Date.now();
+  expires_in = response.expires_in;
+  refresh_token = response.refresh_token;
+  access_token = response.access_token;
+
+  tokenExpiryPeriod = ms(`${expires_in}s`);
+  tokenRefreshInterval = ms(`${expires_in - FIVE_MINS_IN_SECONDS}s`);
+
+
+  if(await condition(() => hasCodeChange, tokenRefreshInterval)) {
+    refresh_token = '';
   }
 
-  setHandler(fetchAthleteAccessToken, () => access_token);
-
-  while(!workflowInfo().continueAsNewSuggested) {
-    // Sleep for a bit
-    await sleep((expires_in - 100) * 1000);
-
-    // Refresh Token
-    const response = await refreshAccessToken(refresh_token);
-
-    expires_in = response.expires_in;
-    refresh_token = response.refresh_token;
-    access_token = response.access_token;
-  }
-
-  await continueAsNew({isCAN: true, expires_in, refresh_token, access_token});
+  await continueAsNew<typeof refreshAthleteAccessToken>({lastRefresh, access_token, refresh_token, code, client_id, client_secret, redirect_uri});
 }

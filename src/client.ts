@@ -1,37 +1,32 @@
+import 'dotenv/config';
 import { Connection, Client } from '@temporalio/client';
 import { refreshAthleteAccessToken } from './workflows';
-import type { RefreshAthleteAccessTokenRequest } from './workflows';
+import type { RefreshAthleteAccessTokenRequest } from './types';
 import { nanoid } from 'nanoid';
 
 async function run() {
-  // Create Request
+  // Create the request.
+  const {STRAVA_CLIENT_ID = '', STRAVA_CLIENT_SECRET = '', STRAVA_REDIRECT_URI = ''} = process.env;
   const aRequest:RefreshAthleteAccessTokenRequest = {
-    isCAN: false,
-    access_token: ''
+    client_id: STRAVA_CLIENT_ID,
+    client_secret: STRAVA_CLIENT_SECRET,
+    redirect_uri: STRAVA_REDIRECT_URI
   }
 
-  // Connect to the default Server location
   const connection = await Connection.connect({ address: 'localhost:7233' });
-  // In production, pass options to configure TLS and other settings:
-  // {
-  //   address: 'foo.bar.tmprl.cloud',
-  //   tls: {}
-  // }
 
   const client = new Client({
     connection,
-    // namespace: 'foo.bar', // connects to 'default' namespace if not specified
   });
 
-  const handle = await client.workflow.execute(refreshAthleteAccessToken, {
+  await client.workflow.start(refreshAthleteAccessToken, {
     taskQueue: 'hello-world',
-    // type inference works! args: [name: string]
     args: [aRequest],
-    // in practice, use a meaningful business ID, like customerId or transactionId
     workflowId: 'workflow-' + nanoid(),
   });
 
   console.log(`Running Strava Workflow`);
+  await connection.close();
 }
 
 run().catch((err) => {

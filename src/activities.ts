@@ -1,31 +1,29 @@
 import 'dotenv/config';
 import strava, { RefreshTokenResponse } from 'strava-v3';
+import type { StravaOAuthResponse } from './types';
 
-async function setupStrava() {
-  const {STRAVA_CLIENT_ID = '', STRAVA_CLIENT_SECRET = '', STRAVA_REDIRECT_URI = ''} = process.env;
+async function setupStrava({client_id = '', client_secret = '', redirect_uri = ''}) {
   strava.config({
+    client_id,
+    client_secret,
+    redirect_uri,
     "access_token": '',
-    "client_id"     : STRAVA_CLIENT_ID,
-    "client_secret" : STRAVA_CLIENT_SECRET,
-    "redirect_uri"  : STRAVA_REDIRECT_URI,
   });
 }
 
-export async function getRequestAccessURL(scope?:string): Promise<string> {
-  await setupStrava();
+export async function getRequestAccessURL({client_id = '', client_secret = '', redirect_uri = '', scope = ''}): Promise<string> {
+  await setupStrava({client_id, client_secret, redirect_uri});
   return await strava.oauth.getRequestAccessURL({scope});
 }
 
-export async function getAccessToken(): Promise<any> {
-  await setupStrava();
-
-  const { STRAVA_CODE = '' } = process.env;
-  const accessToken = await strava.oauth.getToken(STRAVA_CODE);
+export async function getAccessToken({client_id = '', client_secret = '', redirect_uri = '', athleteCode = ''}): Promise<StravaOAuthResponse> {
+  await setupStrava({client_id, client_secret, redirect_uri});
+  const accessToken = await strava.oauth.getToken(athleteCode);
   return accessToken;
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<RefreshTokenResponse> {
-  await setupStrava();
-  const accessToken = await strava.oauth.refreshToken(refreshToken);
+export async function refreshAccessToken({client_id = '', client_secret = '', redirect_uri = '', refresh_token = ''}): Promise<RefreshTokenResponse> {
+  await setupStrava({client_id, client_secret, redirect_uri});
+  const accessToken = await strava.oauth.refreshToken(refresh_token);
   return accessToken;
 }
